@@ -39,10 +39,6 @@ eval env@(uenv, xenv) = \case
      in closure (eval env a)
   Let x t body ->
     eval (uenv, (x, eval env t) : xenv) body
-  Box t -> VBox env t
-  LetBox x t body ->
-    let (VBox (uenv', xenv') t') = eval env t
-     in eval ((x, VLazy (uenv', xenv') t') : uenv, xenv) body
   Product t1 t2 ->
     let v1 = eval env t1
         v2 = eval env t2

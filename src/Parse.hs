@@ -43,6 +43,9 @@ parseNumber = mkNumber . read <$> lexeme (some digitChar)
 parseSucc :: Parser Term
 parseSucc = Succ <$> (symbol "s" *> between (symbol "(") (symbol ")") parseTerm)
 
+parseCTSucc :: Parser Term
+parseCTSucc = fmap CT $ Succ <$> (symbol "#s" *> between (symbol "(") (symbol ")") parseTerm)
+
 parseVar :: Parser Term
 parseVar = Var <$> ident
 
@@ -56,6 +59,9 @@ parseLam =
 parseApp :: Parser Term
 parseApp = App <$> parseTermFunc <*> between (symbol "(") (symbol ")") parseTerm
 
+parseCTApp :: Parser Term
+parseCTApp = fmap CT $ App <$> parseTermFunc <*> between (symbol "#(") (symbol ")") parseTerm
+
 parseLet :: Parser Term
 parseLet =
   Let
@@ -63,27 +69,32 @@ parseLet =
     <*> (symbol "=" *> parseTerm)
     <*> (symbol "in" *> parseTerm)
 
-parseBox :: Parser Term
-parseBox = Box <$> between (symbol "[[") (symbol "]]") parseTerm
-
-parseLetBox :: Parser Term
-parseLetBox =
-  LetBox
-    <$> (symbol "let box" *> ident)
-    <*> (symbol "=" *> parseTerm)
-    <*> (symbol "in" *> parseTerm)
+parseCTLet :: Parser Term
+parseCTLet = fmap CT $ Let <$> (symbol "#let" *> ident) <*> (symbol "=" *> parseTerm) <*> (symbol "in" *> parseTerm)
 
 parseProduct :: Parser Term
 parseProduct = Product <$> (symbol "(" *> parseTerm <* symbol ",") <*> (parseTerm <* symbol ")")
 
+parseCTProduct :: Parser Term
+parseCTProduct = fmap CT $ Product <$> (symbol "#(" *> parseTerm) <*> (symbol "," *> parseTerm <* symbol ")")
+
 parseFst :: Parser Term
 parseFst = Fst <$> (symbol "fst" *> between (symbol "(") (symbol ")") parseTermFunc)
+
+parseCTFst :: Parser Term
+parseCTFst = fmap CT $ Fst <$> (symbol "#fst" *> between (symbol "(") (symbol ")") parseTermFunc)
 
 parseSnd :: Parser Term
 parseSnd = Snd <$> (symbol "snd" *> between (symbol "(") (symbol ")") parseTermFunc)
 
+parseCTSnd :: Parser Term
+parseCTSnd = fmap CT $ Snd <$> (symbol "#snd" *> between (symbol "(") (symbol ")") parseTermFunc)
+
 parseUnit :: Parser Term
 parseUnit = symbol "unit" $> Unit
+
+parseCTUnit :: Parser Term
+parseCTUnit = fmap CT $ symbol "#unit" $> Unit
 
 parseCase :: Parser Term
 parseCase =
@@ -92,6 +103,15 @@ parseCase =
     <*> (symbol "0" *> symbol "=>" *> parseTerm)
     <*> (symbol "|" *> symbol "s" *> ident)
     <*> (symbol "=>" *> parseTerm)
+
+parseCTCase :: Parser Term
+parseCTCase =
+  fmap CT $
+    Case
+      <$> (symbol "#case" *> parseTerm <* symbol "of")
+      <*> (symbol "0" *> symbol "=>" *> parseTerm)
+      <*> (symbol "|" *> symbol "s" *> ident)
+      <*> (symbol "=>" *> parseTerm)
 
 parseFix :: Parser Term
 parseFix =
@@ -115,23 +135,32 @@ parseArrow = TArrow <$> (parseTypeArrow <* symbol "->") <*> parseTypeArrow
 parseProductType :: Parser Type
 parseProductType = TProduct <$> (symbol "(" *> parseType <* symbol ",") <*> (parseType <* symbol ")")
 
-parseBoxedType :: Parser Type
-parseBoxedType = TBox <$> (symbol "[[" *> parseType <* symbol "]]")
+parseCompTimeType :: Parser Type
+parseCompTimeType = TCompTime <$> (symbol "#" *> parseTypeSharp)
+
+parseParenType :: Parser Type
+parseParenType = between (char '(') (char ')') parseType
 
 parseTerm :: Parser Term
 parseTerm =
   choice
-    [ try parseFst,
+    [ try parseCTFst,
+      try parseFst,
+      try parseCTSucc,
       try parseSucc,
+      try parseCTSnd,
       try parseSnd,
+      try parseCTApp,
       try parseApp,
+      try parseCTProduct,
       try parseProduct,
+      try parseCTLet,
+      try parseCTUnit,
+      try parseCTCase,
       parseParen,
       parseNumber,
       parseLam,
-      try parseLetBox,
       parseLet,
-      parseBox,
       parseUnit,
       parseCase,
       parseFix,
@@ -145,7 +174,6 @@ parseTermFunc =
       try parseProduct,
       parseParen,
       parseNumber,
-      parseBox,
       parseUnit,
       parseVar
     ]
@@ -156,8 +184,9 @@ parseType =
     [ try parseArrow,
       parseNat,
       parseUnitType,
-      parseProductType,
-      parseBoxedType
+      parseCompTimeType,
+      try parseProductType,
+      parseParenType
     ]
 
 parseTypeArrow :: Parser Type
@@ -165,8 +194,19 @@ parseTypeArrow =
   choice
     [ parseNat,
       parseUnitType,
-      parseProductType,
-      parseBoxedType
+      parseCompTimeType,
+      try parseProductType,
+      parseParenType
+    ]
+
+parseTypeSharp :: Parser Type
+parseTypeSharp =
+  choice
+    [ parseNat,
+      parseUnitType,
+      parseCompTimeType,
+      try parseProductType,
+      parseParenType
     ]
 
 parseFromCode :: String -> Either String Term

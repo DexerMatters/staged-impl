@@ -7,16 +7,14 @@ data Type
   | TArrow Type Type
   | TProduct Type Type
   | TUnit
-  | TBox Type
+  | TCompTime Type
   deriving (Eq)
 
 data Term
   = Var String
   | Lam String Type Term
   | Let String Term Term
-  | LetBox String Term Term
   | App Term Term
-  | Box Term
   | Product Term Term
   | Fst Term
   | Snd Term
@@ -25,22 +23,33 @@ data Term
   | Succ Term
   | Case Term Term String Term
   | Fix String Type Term
+  | CT Term
   deriving (Eq)
+
+isRuntimeType :: Type -> Bool
+isRuntimeType (TCompTime _) = False
+isRuntimeType _ = True
+
+compTime :: Type -> Type
+compTime (TCompTime t) = TCompTime t
+compTime t = TCompTime t
 
 instance Show Type where
   show TNat = "nat"
+  show (TCompTime TNat) = "#nat"
   show (TArrow t1 t2) = show t1 ++ " -> " ++ show t2
+  show (TCompTime (TArrow t1 t2)) = show t1 ++ " #-> " ++ show t2
   show (TProduct t1 t2) = "(" ++ show t1 ++ ", " ++ show t2 ++ ")"
+  show (TCompTime (TProduct t1 t2)) = "#(" ++ show t1 ++ ", " ++ show t2 ++ ")"
   show TUnit = "unit"
-  show (TBox t) = "[[" ++ show t ++ "]]"
+  show (TCompTime TUnit) = "#unit"
+  show _ = undefined
 
 instance Show Term where
   show (Var x) = x
   show (Lam x t body) = "fun " ++ x ++ " : " ++ show t ++ " . " ++ show body
   show (Let x t body) = "let " ++ x ++ " = " ++ show t ++ " in " ++ show body
   show (App f a) = "(" ++ show f ++ ") (" ++ show a ++ ")"
-  show (Box t) = "[[" ++ show t ++ "]]"
-  show (LetBox x t body) = "let box " ++ x ++ " = " ++ show t ++ " in " ++ show body
   show (Product t1 t2) = "(" ++ show t1 ++ ", " ++ show t2 ++ ")"
   show (Fst t) = "fst (" ++ show t ++ ")"
   show (Snd t) = "snd (" ++ show t ++ ")"
@@ -57,3 +66,4 @@ instance Show Term where
       ++ " => "
       ++ show a'
   show (Fix x t body) = "fix " ++ x ++ " : " ++ show t ++ ". " ++ show body
+  show (CT t) = "#(" ++ show t ++ ")"

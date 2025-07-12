@@ -8,31 +8,31 @@ module Lib
 where
 
 import AST (Term (Unit))
+import Control.Monad (forM_, when)
 import Data.IORef (newIORef, readIORef, writeIORef)
-import qualified Data.Sequence as Seq
-import Eval (eval)
+import Eval (eval, isFullyEvaluated, stageEval)
 import Parse (parseFromCode)
+import System.Exit (exitSuccess)
 import Text.RawString.QQ
 import Typing (infer)
 
 code :: String
 code =
-  [r|let add =
-  fix f: (Nat, Nat) -> Nat.
-  fun n: (Nat, Nat).
-    case fst(n) of
-        0    => snd(n)
-      | s ns => f( (ns, s(snd(n))) )
+  [r|
+
+let eval =
+  fun x: [[Nat]].
+    let box u = x
+    in u
 in
-let times = 
-  fix p: Nat -> [[Nat -> Nat]].
-  fun n: Nat.
-    case n of
-      0   => [[fun x:Nat. 1]]
-    | s m => [[fun x:Nat. add(
-                (x, (eval 1 (p(m)))(x))
-              )]]
-in times(2)|]
+let liftTuple =
+  fun x: ([[Nat]], [[Nat]]).
+    let box u = fst(x)
+    in let box v = snd(x)
+       in [[(u, v)]]
+in
+liftTuple(([[1]], [[2]]))
+  |]
 
 someFunc :: IO ()
 someFunc = do
@@ -44,12 +44,16 @@ someFunc = do
 
   term <- readIORef termRef
   putStrLn ">> Elaborating term..."
-  case infer Seq.Empty term of
+  case infer ([], []) term of
     Left err -> putStrLn $ red $ "Type error: " ++ show err
     Right t -> putStrLn (green $ show t)
 
   putStrLn ">> Evaluating term..."
-  putStrLn $ "Value: " ++ green (show (eval [] term))
+  let value = eval ([], []) term
+  let stages = iterate stageEval value
+  forM_ (zip [1 :: Int ..] stages) $ \(i, v) -> do
+    putStrLn $ "Stage " ++ show i ++ ": " ++ green (show v)
+    when (isFullyEvaluated v) exitSuccess
 
 -- Colorful Output
 

@@ -4,14 +4,8 @@
 module Typing where
 
 import AST (Term (..), Type (..))
-import Data.Functor (($>))
-import Data.Sequence (Seq ((:<|)))
-import qualified Data.Sequence as Seq
-import Debug.Trace (trace)
 
-type Context = [(String, Type)]
-
-type CtxStack = Seq Context
+type Context = ([(String, Type)], [(String, Type)])
 
 data TypeError
   = UnboundVariable String
@@ -22,76 +16,61 @@ data TypeError
 
 type TypeResult a = Either TypeError a
 
-infer :: CtxStack -> Term -> TypeResult Type
-infer (ctx :<| ctxs) term = case term of
-  -- Function
-  Var x -> case lookup x (concat (ctx :<| ctxs)) of
-    Just t -> Right t
-    Nothing -> Left (UnboundVariable x)
-  Lam x t body ->
-    TArrow t <$> infer (((x, t) : ctx) :<| ctxs) body
-  App f arg ->
-    infer' f >>= \case
-      TArrow tArg tRet -> check (ctx :<| ctxs) arg tArg $> tRet
-      t -> Left (TypeMismatch' t "function type")
-  Let x t body -> do
-    tT <- infer (ctx :<| ctxs) t
-    infer (((x, tT) : ctx) :<| ctxs) body
+infer :: Context -> Term -> TypeResult Type
+infer ctx@(uctx, xctx) term = case term of
   -- Code
-  Box t -> TBox <$> infer ([] :<| ctx :<| ctxs) t
-  Unbox n t
-    | n > length ctxs || n < 0 ->
-        Left (UnboxOutOfBounds n (length ctxs))
-    -- Reflectivity
-    | n == 0 -> infer' t
-    -- Unbox
-    | otherwise ->
-        let ctx' = Seq.drop n $ ctx :<| ctxs
-         in infer ctx' t >>= \case
-              TBox t' -> Right t'
-              t' -> Left (TypeMismatch' t' "box type")
-  -- Product
-  Product t1 t2 -> TProduct <$> infer' t1 <*> infer' t2
+  Var x ->
+    case lookup x (uctx <> xctx) of
+      Just t -> Right t
+      Nothing -> Left (UnboundVariable x)
+  Lam x t body ->
+    TArrow t <$> infer (uctx, (x, t) : xctx) body
+  App f a -> do
+    fT <- infer ctx f
+    aT <- infer ctx a
+    case fT of
+      TArrow aT' rT | aT' == aT -> Right rT
+      TArrow aT' _ -> Left (TypeMismatch aT' aT)
+      _ -> Left (TypeMismatch' fT "function type")
+  Let x t body -> do
+    t' <- infer ctx t
+    bodyT <- infer (uctx, (x, t') : xctx) body
+    Right bodyT
+  LetBox x t body ->
+    infer ctx t >>= \case
+      TBox t' -> infer ((x, t') : uctx, xctx) body
+      t' -> Left (TypeMismatch' t' "boxed type")
+  Box t -> TBox <$> infer (uctx, []) t
+  -- Tuple
+  Product t1 t2 ->
+    TProduct
+      <$> infer ctx t1
+      <*> infer ctx t2
   Fst t ->
-    infer' t >>= \case
+    infer ctx t >>= \case
       TProduct t1 _ -> Right t1
       t' -> Left (TypeMismatch' t' "product type")
   Snd t ->
-    infer' t >>= \case
+    infer ctx t >>= \case
       TProduct _ t2 -> Right t2
       t' -> Left (TypeMismatch' t' "product type")
-  -- Natural numbers
-  Unit -> Right TUnit
-  Zero -> Right TNat
+  -- Primary Type
   Succ t ->
-    infer' t >>= \case
+    infer ctx t >>= \case
       TNat -> Right TNat
-      t' -> Left (TypeMismatch' t' "natural number type")
-  Case s a x a' -> do
-    check (ctx :<| ctxs) s TNat
-    tA <- infer' a
-    tA' <- infer (((x, TNat) : ctx) :<| ctxs) a'
-    if tA == tA'
-      then Right tA
-      else Left (TypeMismatch tA tA')
-  -- Recursion
-  Fix x t body -> infer (((x, t) : ctx) :<| ctxs) body
-  where
-    infer' = infer (ctx :<| ctxs)
-infer Seq.Empty term = infer (Seq.singleton []) term
-
-check :: CtxStack -> Term -> Type -> TypeResult ()
-check ctx term expectedType = do
-  actualType <- infer ctx term
-  if actualType == expectedType
-    then Right ()
-    else Left (TypeMismatch expectedType actualType)
-
--- Reverse Drop
-reverseDrop :: Int -> [a] -> [a]
-reverseDrop n xs
-  | n <= 0 = xs
-  | otherwise = reverse (drop n (reverse xs))
-
-d :: (Show a) => String -> a -> a
-d tag a = trace (tag ++ ": " ++ show a) a
+      t' -> Left (TypeMismatch' t' "nat type")
+  Zero -> Right TNat
+  Unit -> Right TUnit
+  -- Recursive
+  Fix x t body ->
+    infer (uctx, (x, t) : xctx) body
+  -- Branch
+  Case s a x a' ->
+    infer ctx s >>= \case
+      TNat -> do
+        aT <- infer ctx a
+        a'T <- infer (uctx, (x, TNat) : xctx) a'
+        if aT == a'T
+          then Right aT
+          else Left (TypeMismatch aT a'T)
+      t' -> Left (TypeMismatch' t' "nat type")

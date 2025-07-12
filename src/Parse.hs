@@ -15,7 +15,7 @@ import Text.Megaparsec.Error (errorBundlePretty)
 type Parser = Parsec Void String
 
 preserved :: [String]
-preserved = ["let", "case", "of", "fix", "eval", "fun"]
+preserved = ["let", "case", "of", "fix", "fun"]
 
 ws :: Parser ()
 ws = L.space space1 (L.skipLineComment "//") (L.skipBlockComment "/*" "*/")
@@ -66,11 +66,12 @@ parseLet =
 parseBox :: Parser Term
 parseBox = Box <$> between (symbol "[[") (symbol "]]") parseTerm
 
-parseUnbox :: Parser Term
-parseUnbox =
-  Unbox
-    <$> (symbol "eval" *> (read <$> lexeme (some digitChar)))
-    <*> parseTermFunc
+parseLetBox :: Parser Term
+parseLetBox =
+  LetBox
+    <$> (symbol "let box" *> ident)
+    <*> (symbol "=" *> parseTerm)
+    <*> (symbol "in" *> parseTerm)
 
 parseProduct :: Parser Term
 parseProduct = Product <$> (symbol "(" *> parseTerm <* symbol ",") <*> (parseTerm <* symbol ")")
@@ -128,9 +129,9 @@ parseTerm =
       parseParen,
       parseNumber,
       parseLam,
+      try parseLetBox,
       parseLet,
       parseBox,
-      parseUnbox,
       parseUnit,
       parseCase,
       parseFix,
@@ -170,6 +171,6 @@ parseTypeArrow =
 
 parseFromCode :: String -> Either String Term
 parseFromCode code =
-  case parse parseTerm "" code of
+  case parse (ws *> parseTerm) "" code of
     Left err -> Left (errorBundlePretty err)
     Right term -> Right term

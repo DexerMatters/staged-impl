@@ -14,9 +14,9 @@ data Term
   = Var String
   | Lam String Type Term
   | Let String Term Term
+  | LetBox String Term Term
   | App Term Term
   | Box Term
-  | Unbox Int Term
   | Product Term Term
   | Fst Term
   | Snd Term
@@ -40,7 +40,7 @@ instance Show Term where
   show (Let x t body) = "let " ++ x ++ " = " ++ show t ++ " in " ++ show body
   show (App f a) = "(" ++ show f ++ ") (" ++ show a ++ ")"
   show (Box t) = "[[" ++ show t ++ "]]"
-  show (Unbox n t) = "eval " ++ show n ++ " (" ++ show t ++ ")"
+  show (LetBox x t body) = "let box " ++ x ++ " = " ++ show t ++ " in " ++ show body
   show (Product t1 t2) = "(" ++ show t1 ++ ", " ++ show t2 ++ ")"
   show (Fst t) = "fst (" ++ show t ++ ")"
   show (Snd t) = "snd (" ++ show t ++ ")"

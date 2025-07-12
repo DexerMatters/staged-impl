@@ -1,16 +1,4 @@
-let add =
-  fix f: (Nat, Nat) -> Nat.
-  fun n: (Nat, Nat).
-    case fst(n) of
-        0    => snd(n)
-      | s ns => f( (ns, s(snd(n))) )
-in
-let times = 
-  fix p: Nat -> [[Nat -> Nat]].
-  fun n: Nat.
-    case n of
-      0   => [[fun x:Nat. 1]]
-    | s m => [[fun x:Nat. add(
-                (x, (eval 1 (p(m)))(x))
-              )]]
-in times(2)
+fun x: ([[A]], [[B]]).
+  let box u = fst(x)
+  in let box u_ = snd(x)
+    in (u, u_)

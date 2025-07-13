@@ -29,11 +29,12 @@ let times =
   fix p: Nat -> [[Nat -> Nat]].
   fun n: Nat.
     case n of
-      0   => [[fun x:Nat. 1]]
+      0   => [[fun x:Nat. 0]]
     | s m => [[fun x:Nat. add(
                 (x, (eval 1 (p(m)))(x))
               )]]
-in times(2)
+in 
+[[(eval 1 (times(2)))(3)]]
   |]
 
 someFunc :: IO ()

@@ -55,7 +55,9 @@ instance Show Term where
   show (Snd t) = "snd (" ++ show t ++ ")"
   show Unit = "unit"
   show Zero = "0"
+  show (CT Zero) = "0"
   show (Succ t) = "s(" ++ show t ++ ")"
+  show (CT (Succ t)) = "#s(" ++ show t ++ ")"
   show (Case s a x a') =
     "case "
       ++ show s

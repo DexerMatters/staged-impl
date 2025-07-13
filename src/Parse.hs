@@ -34,8 +34,8 @@ ident = lexeme $ do
   return (hd : tl)
 
 mkNumber :: Int -> Term
-mkNumber 0 = Zero
-mkNumber n = Succ (mkNumber (n - 1))
+mkNumber 0 = CT Zero
+mkNumber n = CT (Succ (mkNumber (n - 1)))
 
 parseNumber :: Parser Term
 parseNumber = mkNumber . read <$> lexeme (some digitChar)

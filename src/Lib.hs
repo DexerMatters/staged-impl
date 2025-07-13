@@ -9,18 +9,28 @@ where
 
 import AST (Term (Unit))
 -- import Control.Monad (forM_, when)
-import Data.IORef (newIORef, readIORef, writeIORef)
+
 -- import Eval (eval, isFullyEvaluated, stageEval)
-import Parse (parseFromCode)
+
 -- import System.Exit (exitSuccess)
+
+import Data.IORef (newIORef, readIORef, writeIORef)
+import Eval (evalC, evalR, show')
+import Parse (parseFromCode)
+import System.Exit (exitFailure)
 import Text.RawString.QQ
-import Typing (InferFlag (CompTime, Runtime), infer)
+import Typing (StageFlag (Runtime), infer)
 
 code :: String
 code =
   [r|
-#let f = fun x : #Nat. x
-in f#(1)
+#let times =
+  fix p: #(#Nat -> Nat).
+  fun n: #Nat.
+    #case n of
+        0 => 0
+      | s m => s(s(p#(m)))
+in times#(8)
   |]
 
 someFunc :: IO ()
@@ -34,15 +44,16 @@ someFunc = do
   term <- readIORef termRef
   putStrLn ">> Elaborating term..."
   case infer Runtime ([], []) term of
-    Left err -> putStrLn $ red $ "Type error: " ++ show err
+    Left err -> do
+      putStrLn $ red $ "Type error: " ++ show err
+      exitFailure
     Right t -> putStrLn (green $ show t)
 
--- putStrLn ">> Evaluating term..."
--- let value = eval ([], []) term
--- let stages = iterate stageEval value
--- forM_ (zip [1 :: Int ..] stages) $ \(i, v) -> do
---   putStrLn $ "Stage " ++ show i ++ ": " ++ green (show v)
---   when (isFullyEvaluated v) exitSuccess
+  putStrLn ">> Evaluating term..."
+  let value = evalC ([], []) term
+  putStrLn $ "Compile-time: \t" ++ green (show' value)
+  let value = evalR ([], []) term
+  putStrLn $ "Runtime: \t" ++ green (show value)
 
 -- Colorful Output
 

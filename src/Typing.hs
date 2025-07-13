@@ -6,7 +6,7 @@
 module Typing where
 
 import AST (Term (..), Type (..), compTime, isRuntimeType)
-import Eval (tr)
+import Debug.Trace (trace)
 
 type Context = ([(String, Type)], [(String, Type)])
 
@@ -19,18 +19,18 @@ data TypeError
   | UnknownTerm Term
   deriving (Show, Eq)
 
-data InferFlag = Runtime | CompTime
+data StageFlag = Runtime | CompTime
   deriving (Show, Eq)
 
 type TypeResult a = Either TypeError a
 
-infer :: InferFlag -> Context -> Term -> TypeResult Type
+infer :: StageFlag -> Context -> Term -> TypeResult Type
 infer flag ctx@(uctx, xctx) = \case
   -- Function
   Var x ->
-    let ctx = if flag == CompTime then uctx else ctx
-     in case lookup x (tr "ctx" ctx) of
-          Just t -> Right (tr "t" t)
+    let ctx = if flag == CompTime then uctx else xctx <> uctx
+     in case lookup x ctx of
+          Just t -> Right t
           Nothing -> Left $ UnboundVariable x
   Lam x t body
     | isRuntimeType t ->
@@ -48,17 +48,15 @@ infer flag ctx@(uctx, xctx) = \case
     f <- inferR ctx f
     a <- inferR ctx a
     case f of
-      TArrow a' r
-        | a == a' -> Right r
-        | otherwise -> Left $ TypeMismatch a a'
+      TArrow a' r ->
+        canConvert a a' >> Right r
       _ -> Left $ TypeMismatch' f "function type"
   CT (App f a) -> do
     f <- inferC ctx f
     a <- inferC ctx a
     case f of
-      TCompTime (TArrow a' r)
-        | a == a' -> Right r
-        | otherwise -> Left $ TypeMismatch a a'
+      TCompTime (TArrow a' r) ->
+        canConvert a a' >> Right (TCompTime r)
       _ -> Left $ TypeMismatch' f "function type"
   -- Tuple
   Product t1 t2 ->
@@ -68,6 +66,7 @@ infer flag ctx@(uctx, xctx) = \case
   Fst t ->
     inferR ctx t >>= \case
       TProduct t1 _ -> Right t1
+      TCompTime (TProduct t1 _) -> Right t1
       t -> Left $ TypeMismatch' t "product type"
   CT (Fst t) ->
     inferC ctx t >>= \case
@@ -76,6 +75,7 @@ infer flag ctx@(uctx, xctx) = \case
   Snd t ->
     inferR ctx t >>= \case
       TProduct _ t2 -> Right t2
+      TCompTime (TProduct _ t2) -> Right t2
       t -> Left $ TypeMismatch' t "product type"
   CT (Snd t) ->
     inferC ctx t >>= \case
@@ -86,32 +86,31 @@ infer flag ctx@(uctx, xctx) = \case
   -- Natural numbers
   Zero -> Right TNat
   CT Zero -> Right (TCompTime TNat)
-  Succ t ->
-    inferR ctx t >>= \case
-      TNat -> Right TNat
-      t -> Left $ TypeMismatch' t "nat type"
+  Succ t -> do
+    t <- inferR ctx t
+    canConvert t TNat
+    Right TNat
   CT (Succ t) ->
     inferC ctx t >>= \case
       TCompTime TNat -> Right (TCompTime TNat)
       t -> Left $ TypeMismatch' t "nat type"
   -- Case
   Case s a x a' ->
-    inferR ctx s >>= \case
-      TNat -> do
-        a <- inferR ctx a
-        a' <- inferR (uctx, (x, TNat) : xctx) a'
-        if a == a'
-          then Right a
-          else Left $ TypeMismatch a a'
-      t -> Left $ TypeMismatch' t "nat type"
+    do
+      s <- inferR ctx s
+      canConvert s TNat
+      a <- inferR ctx a
+      a' <- inferR (uctx, (x, TNat) : xctx) a'
+      if a == a'
+        then Right a
+        else Left $ TypeMismatch a a'
   CT (Case s a x a') ->
     inferC ctx s >>= \case
       TCompTime TNat -> do
         a <- inferC ctx a
         a' <- inferC ((x, TCompTime TNat) : uctx, xctx) a'
-        if a == a'
-          then Right a
-          else Left $ TypeMismatch a a'
+        canConvert a a'
+        Right a'
       t -> Left $ TypeMismatch' t "nat type"
   -- Recursive
   Fix x t body
@@ -123,4 +122,18 @@ infer flag ctx@(uctx, xctx) = \case
   u -> Left $ UnknownTerm u
   where
     inferR = infer Runtime
-    inferC ctx = fmap compTime . infer CompTime ctx
+    inferC = infer CompTime
+
+canConvert :: Type -> Type -> Either TypeError ()
+canConvert (TCompTime t) (TCompTime t') = canConvert t t'
+canConvert (TCompTime t') t = canConvert t' t
+canConvert t' t
+  | t' == t = Right ()
+  | otherwise = Left $ TypeMismatch t' t
+
+tr :: (Show a) => String -> a -> a
+tr msg a = trace (msg ++ " :" ++ show a) a
+
+trM :: (Show a, Monad m) => String -> a -> m a
+trM msg a = do
+  trace (msg ++ " :" ++ show a) $ return a

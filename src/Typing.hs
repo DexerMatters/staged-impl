@@ -76,6 +76,7 @@ infer (ctx :<| ctxs) term = case term of
       else Left (TypeMismatch tA tA')
   -- Recursion
   Fix x t body -> infer (((x, t) : ctx) :<| ctxs) body
+  _ -> error "Never reach"
   where
     infer' = infer (ctx :<| ctxs)
 infer Seq.Empty term = infer (Seq.singleton []) term

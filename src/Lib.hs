@@ -10,14 +10,15 @@ where
 import AST (Term (Unit))
 import Data.IORef (newIORef, readIORef, writeIORef)
 import qualified Data.Sequence as Seq
-import Eval (eval)
+import Eval (eval, quote, unbox)
 import Parse (parseFromCode)
 import Text.RawString.QQ
 import Typing (infer)
 
 code :: String
 code =
-  [r|let add =
+  [r|
+let add =
   fix f: (Nat, Nat) -> Nat.
   fun n: (Nat, Nat).
     case fst(n) of
@@ -32,7 +33,8 @@ let times =
     | s m => [[fun x:Nat. add(
                 (x, (eval 1 (p(m)))(x))
               )]]
-in times(2)|]
+in times(2)
+  |]
 
 someFunc :: IO ()
 someFunc = do
@@ -49,7 +51,9 @@ someFunc = do
     Right t -> putStrLn (green $ show t)
 
   putStrLn ">> Evaluating term..."
-  putStrLn $ "Value: " ++ green (show (eval [] term))
+  let quoted = quote (eval [] term)
+  putStrLn $ "Stage 0 (Compile Time): \n" ++ green (show quoted)
+  putStrLn $ "Stage 1 (Run Time): \n" ++ green (show (eval [] (unbox quoted)))
 
 -- Colorful Output
 

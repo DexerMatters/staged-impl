@@ -170,6 +170,6 @@ parseTypeArrow =
 
 parseFromCode :: String -> Either String Term
 parseFromCode code =
-  case parse parseTerm "" code of
+  case parse (ws >> parseTerm) "" code of
     Left err -> Left (errorBundlePretty err)
     Right term -> Right term

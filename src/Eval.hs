@@ -4,36 +4,19 @@
 
 module Eval where
 
-import AST (Term (..))
+import AST (Env, Term (..), Value (..))
 import Data.Maybe (fromJust)
-
-data Value
-  = VLam String (Value -> Value)
-  | VProduct Value Value
-  | VUnit
-  | VNat Int
-  | VBox Env Term
-  | VLazy Env Term
-
-type Env = [(String, Value)]
-
-instance Show Value where
-  show (VLam x _) = "fun (" ++ x ++ ")"
-  show (VProduct t1 t2) = "(" ++ show t1 ++ ", " ++ show t2 ++ ")"
-  show VUnit = "unit"
-  show (VNat n) = show n
-  show (VBox _ term) = "[[" ++ show term ++ "]]"
-  show (VLazy _ _) = "..."
 
 eval :: Env -> Term -> Value
 eval env = \case
   Var x -> case fromJust $ lookup x env of
     VLazy env' body -> eval env' body
     v -> v
-  Lam x _ body -> VLam x $ \v -> eval ((x, v) : env) body
+  Lam x t body -> VLam x t env body
   App f a ->
-    let (VLam _ closure) = eval env f
-     in closure (eval env a)
+    let (VLam x _ env' body) = eval env f
+        a' = eval env a
+     in eval ((x, a') : env') body
   Let x t body ->
     eval ((x, eval env t) : env) body
   Box t -> VBox env t
@@ -63,22 +46,38 @@ eval env = \case
           _ -> error "Never reach"
   e@(Fix x _ body) ->
     eval ((x, VLazy env e) : env) body
+  Value v -> v
 
-relabel :: Int -> Int -> Term -> Term
-relabel n m = \case
-  Var x -> Var x
-  Lam x t body -> Lam x t (relabel n m body)
-  App f arg -> App (relabel n m f) (relabel n m arg)
-  Let x t body -> Let x (relabel n m t) (relabel n m body)
-  Box t -> Box (relabel n (m + 1) t)
-  Unbox p t
-    | p < m -> Unbox p $ relabel n (m - p) t
-    | otherwise -> Unbox (p + n - 1) t
-  Product t1 t2 -> Product (relabel n m t1) (relabel n m t2)
-  Fst t -> Fst (relabel n m t)
-  Snd t -> Snd (relabel n m t)
+quote :: Value -> Term
+quote = \case
+  VBox env t -> Box (extend env t)
+  VLazy env t -> extend env t
+  VLam x t env body -> Lam x t (extend env body)
+  VProduct v1 v2 -> Product (quote v1) (quote v2)
+  VUnit -> Unit
+  VNat n -> Value (VNat n)
+
+unbox :: Term -> Term
+unbox = \case
+  Box t -> t
+  v -> v
+
+extend :: Env -> Term -> Term
+extend env = \case
+  Var x -> case lookup x env of
+    Just v -> quote v
+    Nothing -> Var x
+  Lam x t body -> Lam x t (extend env body)
+  App f a -> App (extend env f) (extend env a)
+  Let x t body -> Let x (extend env t) (extend env body)
+  Box t -> Box (extend env t)
+  Unbox n t -> Unbox n (extend env t)
+  Product t1 t2 -> Product (extend env t1) (extend env t2)
+  Fst t -> Fst (extend env t)
+  Snd t -> Snd (extend env t)
   Unit -> Unit
   Zero -> Zero
-  Succ t -> Succ (relabel n m t)
-  Case s a x a' -> Case (relabel n m s) (relabel n m a) x (relabel n m a')
-  Fix x t body -> Fix x t (relabel n m body)
+  Succ t -> Succ (extend env t)
+  Case s a x a' -> Case (extend env s) (extend env a) x (extend env a')
+  Fix x t body -> Fix x t (extend env body)
+  Value v -> Value v

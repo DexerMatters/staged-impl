@@ -4,27 +4,9 @@
 
 module Eval where
 
-import AST (Term (..))
+import AST (Env, Term (..), Value (..))
 import Data.Maybe (fromJust)
 import Debug.Trace (trace)
-
-data Value
-  = VLam String (Value -> Value)
-  | VProduct Value Value
-  | VUnit
-  | VNat Int
-  | VBox Env Term
-  | VLazy Env Term
-
-type Env = ([(String, Value)], [(String, Value)])
-
-instance Show Value where
-  show (VLam x _) = "fun (" ++ x ++ ")"
-  show (VProduct t1 t2) = "(" ++ show t1 ++ ", " ++ show t2 ++ ")"
-  show VUnit = "unit"
-  show (VNat n) = show n
-  show (VBox _ term) = "[[" ++ show term ++ "]]"
-  show (VLazy _ _) = "..."
 
 eval :: Env -> Term -> Value
 eval env@(uenv, xenv) = \case
@@ -32,11 +14,11 @@ eval env@(uenv, xenv) = \case
     case fromJust $ lookup x (uenv <> xenv) of
       VLazy env' body -> eval env' body
       v -> v
-  Lam x _ body ->
-    VLam x $ \v -> eval (uenv, (x, v) : xenv) body
+  Lam x t body -> VLam x t env body
   App f a ->
-    let (VLam _ closure) = eval env f
-     in closure (eval env a)
+    let (VLam x _ (uenv', xenv') body) = eval env f
+        a' = eval env a
+     in eval (uenv', (x, a') : xenv') body
   Let x t body ->
     eval (uenv, (x, eval env t) : xenv) body
   Box t -> VBox env t
@@ -66,10 +48,39 @@ eval env@(uenv, xenv) = \case
           _ -> error "Never reach"
   e@(Fix x _ body) ->
     eval (uenv, (x, VLazy env e) : xenv) body
+  Value v -> v
+
+quote :: Value -> Term
+quote = \case
+  VBox env' term -> extend (uncurry (<>) env') term
+  VLazy env' term -> extend (uncurry (<>) env') term
+  VLam x t env' body ->
+    Lam x t (extend (uncurry (<>) env') body)
+  VProduct t1 t2 -> Product (quote t1) (quote t2)
+  VUnit -> Unit
+  VNat n -> Value (VNat n)
+
+extend :: [(String, Value)] -> Term -> Term
+extend env = \case
+  Var x -> maybe (Var x) quote (lookup x env)
+  Lam x t body -> Lam x t (extend env body)
+  App f a -> App (extend env f) (extend env a)
+  Let x t body -> Let x (extend env t) (extend env body)
+  Box t -> Box (extend env t)
+  LetBox x t body -> LetBox x (extend env t) (extend env body)
+  Product t1 t2 -> Product (extend env t1) (extend env t2)
+  Fst t -> Fst (extend env t)
+  Snd t -> Snd (extend env t)
+  Unit -> Unit
+  Zero -> Zero
+  Succ t -> Succ (extend env t)
+  Case s a x a' -> Case (extend env s) (extend env a) x (extend env a')
+  Fix x t body -> Fix x t (extend env body)
+  Value v -> Value v
 
 stageEval :: Value -> Value
 stageEval = \case
-  VLam x closure -> VLam x closure
+  VLam x t env body -> VLam x t env body
   VProduct t1 t2 -> VProduct (stageEval t1) (stageEval t2)
   VUnit -> VUnit
   VNat n -> VNat n
@@ -78,7 +89,7 @@ stageEval = \case
 
 isFullyEvaluated :: Value -> Bool
 isFullyEvaluated = \case
-  VLam _ _ -> True
+  VLam {} -> True
   VProduct t1 t2 -> isFullyEvaluated t1 && isFullyEvaluated t2
   VUnit -> True
   VNat _ -> True

@@ -74,3 +74,4 @@ infer ctx@(uctx, xctx) term = case term of
           then Right aT
           else Left (TypeMismatch aT a'T)
       t' -> Left (TypeMismatch' t' "nat type")
+  _ -> error "Never reach"

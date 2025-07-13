@@ -10,7 +10,7 @@ where
 import AST (Term (Unit))
 import Control.Monad (forM_, when)
 import Data.IORef (newIORef, readIORef, writeIORef)
-import Eval (eval, isFullyEvaluated, stageEval)
+import Eval (eval, isFullyEvaluated, quote, stageEval)
 import Parse (parseFromCode)
 import System.Exit (exitSuccess)
 import Text.RawString.QQ
@@ -20,18 +20,15 @@ code :: String
 code =
   [r|
 
-let eval =
-  fun x: [[Nat]].
-    let box u = x
-    in u
-in
-let liftTuple =
-  fun x: ([[Nat]], [[Nat]]).
-    let box u = fst(x)
-    in let box v = snd(x)
-       in [[(u, v)]]
-in
-liftTuple(([[1]], [[2]]))
+let double =
+  fix f: Nat -> [[Nat]].
+  fun x: Nat.
+    case x of
+        0 => [[0]]
+      | s y => 
+        let box v = f(y)
+        in [[s(s(v))]]
+in double(3)
   |]
 
 someFunc :: IO ()
@@ -52,7 +49,7 @@ someFunc = do
   let value = eval ([], []) term
   let stages = iterate stageEval value
   forM_ (zip [1 :: Int ..] stages) $ \(i, v) -> do
-    putStrLn $ "Stage " ++ show i ++ ": " ++ green (show v)
+    putStrLn $ "Stage " ++ show i ++ ": " ++ green (show (quote v))
     when (isFullyEvaluated v) exitSuccess
 
 -- Colorful Output

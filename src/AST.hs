@@ -25,7 +25,27 @@ data Term
   | Succ Term
   | Case Term Term String Term
   | Fix String Type Term
+  | Value Value
   deriving (Eq)
+
+data Value
+  = VLam String Type Env Term
+  | VProduct Value Value
+  | VUnit
+  | VNat Int
+  | VBox Env Term
+  | VLazy Env Term
+  deriving (Eq)
+
+instance Show Value where
+  show (VLam x _ _ _) = "fun (" ++ x ++ ")"
+  show (VProduct t1 t2) = "(" ++ show t1 ++ ", " ++ show t2 ++ ")"
+  show VUnit = "unit"
+  show (VNat n) = show n
+  show (VBox _ term) = "[[" ++ show term ++ "]]"
+  show (VLazy _ _) = "..."
+
+type Env = ([(String, Value)], [(String, Value)])
 
 instance Show Type where
   show TNat = "nat"
@@ -57,3 +77,4 @@ instance Show Term where
       ++ " => "
       ++ show a'
   show (Fix x t body) = "fix " ++ x ++ " : " ++ show t ++ ". " ++ show body
+  show (Value v) = show v
